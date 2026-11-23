@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Palm Presenter</title>
+<style>
+:root{font-family:Segoe UI,Arial,sans-serif;color:#182b36;background:#eef2f4;font-size:15px}
+*{box-sizing:border-box}body{margin:0}header{background:#163d42;color:white;padding:22px 30px;display:flex;align-items:center;justify-content:space-between}
+h1{font-size:25px;margin:0 0 5px}h2{font-size:17px;margin:0 0 12px}p{line-height:1.45}header p{margin:0;color:#cadcdd}
+main{padding:22px;max-width:1600px;margin:auto;display:grid;grid-template-columns:minmax(380px,1fr) minmax(420px,1.15fr);gap:20px}
+.panel{background:#fff;border:1px solid #d7e1e4;border-radius:12px;padding:18px;margin-bottom:16px}.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+button,select,input{font:inherit;border:1px solid #aebfc5;border-radius:7px;padding:9px 12px;background:white;color:#182b36}button{cursor:pointer;font-weight:600}button:hover{background:#e5efef}button:disabled{opacity:.5;cursor:default}
+.primary{background:#176b68;color:white;border-color:#176b68}.primary:hover{background:#145c59}.muted{font-size:12px;color:#61727b}.status{font-weight:600;color:#176b68;margin:12px 0}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.metric{padding:10px;background:#f0f5f6;border-radius:7px}.metric strong{display:block;font-size:23px}.metric span{font-size:11px;color:#61727b}
+#cameraBox{position:relative;background:#10272e;border-radius:9px;overflow:hidden;aspect-ratio:4/3;margin-top:14px}video{width:100%;height:100%;display:block;transform:scaleX(-1)}#overlay{position:absolute;inset:0;width:100%;height:100%}
+#placeholder{position:absolute;inset:0;display:grid;place-items:center;color:#bfd1d5;text-align:center;padding:30px}
+.slide{position:relative;min-height:310px;aspect-ratio:16/9;background:#f6f0e4;padding:36px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;border-radius:8px;border:1px solid #e2d8c5}.slide h2{font-size:clamp(23px,2.6vw,39px);line-height:1.15;max-width:90%}.slide p{font-size:18px;max-width:85%;color:#51616a}.slide .eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;color:#176b68;margin-bottom:18px}.slide.blackout{background:#101c23}.slide.blackout>*{visibility:hidden}
+#pointer{display:none;position:absolute;width:16px;height:16px;border-radius:50%;background:#bd4b35;transform:translate(-50%,-50%);border:2px solid white;box-shadow:0 0 0 5px #bd4b3530}#pointer.spotlight{width:65px;height:65px;background:#f7cd5a30;border:2px solid #bd8e20;box-shadow:0 0 0 1600px #10273030}
+.commands{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:16px 0;font-size:13px}.commands div{padding:9px;border-bottom:1px solid #e1e7e9}.commands b{display:block;font-size:14px;margin-bottom:3px}
+.readout{border-top:1px solid #e1e7e9;padding-top:10px;margin-top:10px;font-size:13px;line-height:1.6;white-space:pre-line}#notice{min-height:22px;color:#526773;font-size:13px}.badge{padding:7px 10px;border-radius:30px;background:#e1efec;color:#145c59;font-size:12px}.error{color:#a2323d!important}label{font-size:13px}#name{max-width:180px}footer{padding:0 24px 24px;color:#61727b;font-size:12px}
+@media(max-width:950px){main{grid-template-columns:1fr}header{padding:18px}.slide{min-height:250px}}
+</style></head><body>
+<header><div><h1>Palm Presenter</h1></div><span class="badge">Local processing</span></header>
+<main><section><div class="panel"><h2>Camera and tracking</h2>
+<div class="row"><select id="camera" aria-label="Camera"><option value="">Default camera</option></select><button id="refresh">Refresh cameras</button></div>
+<div class="row" style="margin-top:10px"><button id="start" class="primary">Start</button><button id="stop" disabled>Stop</button><button id="reset">Reset</button><span class="muted">Requests 30 FPS</span></div>
+<div id="cameraBox"><video id="video" autoplay playsinline muted></video><canvas id="overlay"></canvas><div id="placeholder">Select your webcam, then press Start.<br>Your camera stays off until you choose to begin.</div></div>
+<div class="metrics"><div class="metric"><strong id="captureFps">—</strong><span>DELIVERED VIDEO FPS</span></div><div class="metric"><strong id="analysisFps">—</strong><span>ANALYZED FPS</span></div><div class="metric"><strong id="latency">—</strong><span>ROUND TRIP · ms</span></div></div>
+<div id="cameraInfo" class="muted" style="margin-top:8px">Camera details appear here when capture starts.</div><div id="notice" role="status"></div>
+</div><div class="panel"><h2>Presenter profile</h2><div class="row"><input id="name" placeholder="Your name" autocomplete="off" maxlength="40" aria-label="Profile name"><button id="enroll" disabled>Enroll face</button></div>
+<p><label><input type="checkbox" id="consent"> I agree to enroll my face for this local session.</label></p>
+<p class="muted">Look forward with eyes open. Five samples set your profile and neutral head position. Reset clears profiles. No photos are saved.</p>
+<div id="faces" class="readout">No face measurements yet.</div></div></section>
+<section><div class="panel"><div class="row" style="justify-content:space-between"><h2>Presentation</h2><span id="slideNumber" class="badge">1 / 5</span></div>
+<div id="gate" class="status" role="status">Start the camera and enroll your face</div>
+<div id="slide" class="slide"><h2 id="slideTitle">A presentation without a remote</h2><p id="slideBody">Face verification enables control. Hand gestures drive the presentation.</p><div id="pointer"></div></div>
+<div class="row" style="margin-top:12px"><span class="muted">Last action:</span><strong id="lastAction">Ready</strong></div>
+<div class="commands"><div><b>Thumb up</b>Enable control</div><div><b>Fist</b>Pause control</div><div><b>Thumb right</b>Next slide</div><div><b>Thumb left</b>Previous slide</div><div><b>Swipe left with open palm</b>Next slide</div><div><b>Swipe right with open palm</b>Previous slide</div><div><b>Point</b>Move the pointer</div><div><b>Peace</b>Toggle blackout</div><div><b>Pinch and release</b>Toggle spotlight</div><div><b>Look away / leave</b>Pause automatically</div></div>
+<p class="muted">For a thumb command, curl your fingers, point your thumb sideways and hold for half a second. Open your hand briefly before repeating. Use one control hand and one presenter. Directions follow the mirrored screen.</p>
+<div id="hands" class="readout">No hand measurements yet.</div></div>
+<div class="panel"><h2>Gesture trials</h2><div class="row"><select id="expected" aria-label="Expected gesture"><option>Open Palm</option><option>Fist</option><option>Thumb Up</option><option>Peace</option><option>Point</option><option>Swipe Left</option><option>Swipe Right</option><option>Pinch</option><option>Thumb Right</option><option>Thumb Left</option><option>No hand</option></select><button id="trial" disabled>Run 4-second trial</button><button id="download">Save results</button></div><p id="trialStatus" class="muted">Choose the intended gesture before each trial. Include failures.</p></div>
+</section></main><footer>Expression labels describe visible appearance. Age bands are uncertain model estimates. Blink and head pose are attention proxies. Slide control uses face matching and head direction.</footer>
+<script>
+const token='__TOKEN__', $=id=>document.getElementById(id), NL=String.fromCharCode(10);
+const video=$('video'), overlay=$('overlay'), context=overlay.getContext('2d');
+const capture=document.createElement('canvas'), captureContext=capture.getContext('2d');
+let stream=null, running=false, busy=false, sequence=0, generation=0, lastResult=0, lastFrame=-1;
+let videoCount=0, videoSince=0, deliveredFps=0, lastCameraSettings=null;
+const url=path=>path+(path.includes('?')?'&':'?')+'token='+encodeURIComponent(token);
+function notice(message,error=false){$('notice').textContent=message;$('notice').classList.toggle('error',error);}
+async function request(path,options={}){
+  const response=await fetch(url(path),options), body=await response.json();
+  if(!response.ok)throw new Error(body.detail||'Request failed');return body;
+}
+async function waitForFrame(){while(busy)await new Promise(resolve=>setTimeout(resolve,30));}
+async function action(kind,extra={}){
+  await waitForFrame();
+  return request('/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:kind,...extra})});
+}
+async function cameras(){
+  if(!navigator.mediaDevices){notice('Open this page in Chrome or Edge on this computer.',true);return;}
+  const selected=$('camera').value, devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+  $('camera').replaceChildren(new Option('Default camera',''));
+  devices.forEach((d,i)=>$('camera').add(new Option(d.label||'Camera '+(i+1),d.deviceId)));
+  if(devices.some(d=>d.deviceId===selected))$('camera').value=selected;
+}
+function clearView(){
+  context.clearRect(0,0,overlay.width,overlay.height);$('pointer').style.display='none';
+  ['captureFps','analysisFps','latency'].forEach(id=>$(id).textContent='—');
+}
+async function stop(){
+  running=false;generation++;
+  if(stream)stream.getTracks().forEach(track=>track.stop());stream=null;video.srcObject=null;
+  await waitForFrame();await action('stop');sequence=0;clearView();
+  $('placeholder').style.display='grid';$('start').disabled=false;$('stop').disabled=true;
+  $('enroll').disabled=true;$('trial').disabled=true;$('gate').textContent='Camera stopped';
+}
+async function start(){
+  if(running)return;
+  try{
+    const device=$('camera').value;
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{deviceId:device?{exact:device}:undefined,width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}});
+    video.srcObject=stream;await video.play();await action('stop');sequence=0;generation++;
+    running=true;lastFrame=-1;lastResult=0;videoCount=0;videoSince=performance.now();
+    const w=video.videoWidth,h=video.videoHeight;
+    capture.width=640;capture.height=Math.round(640*h/w);overlay.width=capture.width;overlay.height=capture.height;
+    $('cameraBox').style.aspectRatio=w+'/'+h;$('placeholder').style.display='none';
+    $('start').disabled=true;$('stop').disabled=false;$('enroll').disabled=false;$('trial').disabled=false;
+    const track=stream.getVideoTracks()[0],settings=track.getSettings();
+    lastCameraSettings={...settings,label:track.label};
+    $('cameraInfo').textContent=track.label+' · '+w+' × '+h+' · camera reports '+(settings.frameRate||'unknown')+' FPS';
+    await cameras();notice('Camera running. Enroll a face before enabling control.');countFrames(generation);processLoop(generation);
+  }catch(error){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;notice(error.message,true);}
+}
+function countFrames(myGeneration){
+  if(!running||generation!==myGeneration)return;
+  if(video.requestVideoFrameCallback){
+    video.requestVideoFrameCallback((now,metadata)=>{
+      if(!running||generation!==myGeneration)return;videoCount++;
+      if(now-videoSince>=1000){deliveredFps=videoCount*1000/(now-videoSince);$('captureFps').textContent=deliveredFps.toFixed(1);videoCount=0;videoSince=now;}
+      countFrames(myGeneration);
+    });
+  }else notice('This browser cannot measure delivered video FPS. Use current Chrome or Edge.',true);
+}
+async function processLoop(myGeneration){
+  if(!running||generation!==myGeneration)return;
+  if(!busy&&video.readyState>=2&&video.currentTime!==lastFrame){
+    busy=true;lastFrame=video.currentTime;const begin=performance.now();
+    try{
+      captureContext.setTransform(-1,0,0,1,capture.width,0);captureContext.drawImage(video,0,0,capture.width,capture.height);
+      captureContext.setTransform(1,0,0,1,0,0);
+      const blob=await new Promise(resolve=>capture.toBlob(resolve,'image/jpeg',.82));
+      const result=await request('/frame?sequence='+(sequence++),{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});
+      if(running&&generation===myGeneration){lastResult=performance.now();draw(result);$('latency').textContent=Math.round(lastResult-begin);}
+    }catch(error){notice(error.message,true);}finally{busy=false;}
+  }
+  if(running&&generation===myGeneration)setTimeout(()=>processLoop(myGeneration),20);
+}
+function draw(result){
+  context.clearRect(0,0,overlay.width,overlay.height);context.lineWidth=2;context.font='14px Segoe UI';
+  result.faces.forEach(face=>{
+    context.strokeStyle=face.identity?'#70e0ae':'#ffd189';context.strokeRect(...face.box);context.fillStyle=context.strokeStyle;
+    context.fillText(face.identity||'Unknown',face.box[0],Math.max(17,face.box[1]-6));
+  });
+  const links=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+  result.hands.forEach(hand=>{context.strokeStyle='#92dcec';links.forEach(([a,b])=>{context.beginPath();context.moveTo(...hand.points[a]);context.lineTo(...hand.points[b]);context.stroke();});});
+  $('analysisFps').textContent=result.analysis_fps.toFixed(1);const state=result.presentation;
+  $('gate').textContent=state.status;$('slideNumber').textContent=state.slide+' / '+state.total;
+  $('slideTitle').textContent=state.title;$('slideBody').textContent=state.body;
+  $('slide').classList.toggle('blackout',state.blackout);$('lastAction').textContent=state.last_action;
+  $('trialStatus').textContent=result.trial;if(result.message)notice(result.message);
+  $('faces').textContent=result.faces.length?result.faces.map(face=>[
+    (face.identity||'Unknown')+' · similarity '+face.similarity.toFixed(3),
+    face.expression+' · model score '+(100*face.expression_score).toFixed(0)+'% · estimated age band '+face.age_band,
+    'Blinks '+face.blink_count+' · rate '+(face.blink_rate===null?'collecting 10s':face.blink_rate+'/min')+
+    ' · head Δ '+(face.relative_yaw??'—')+'° yaw / '+(face.relative_pitch??'—')+'° pitch'
+  ].join(NL)).join(NL+NL):'No face detected.';
+  $('hands').textContent=result.hands.length?result.hands.map(hand=>hand.handedness+' hand · '+hand.static+(hand.static==='Thumb Left'||hand.static==='Thumb Right'?' · landmark pose':' · score '+(hand.score*100).toFixed(0)+'%')+(hand.event?' · '+hand.event:'')).join(NL):'No hand detected.';
+  const point=result.hands.length===1?result.hands[0]:null;
+  const show=point&&state.armed&&!state.blackout&&(point.static==='Point'||state.spotlight);
+  $('pointer').style.display=show?'block':'none';$('pointer').classList.toggle('spotlight',state.spotlight);
+  if(show){$('pointer').style.left=(point.pointer[0]/result.width*100)+'%';$('pointer').style.top=(point.pointer[1]/result.height*100)+'%';}
+}
+setInterval(()=>{if(running&&lastResult&&performance.now()-lastResult>750){context.clearRect(0,0,overlay.width,overlay.height);$('pointer').style.display='none';$('gate').textContent='Tracking interrupted — controls paused';}},250);
+$('start').onclick=start;$('stop').onclick=()=>stop().catch(e=>notice(e.message,true));
+$('refresh').onclick=()=>cameras().catch(e=>notice(e.message,true));
+$('camera').onchange=async()=>{if(running)await stop();await action('reset');notice('Camera changed. Press Start, then enroll again.');};
+$('reset').onclick=async()=>{
+  if(running)await stop();await action('reset');$('faces').textContent='Profiles cleared.';$('hands').textContent='No hand measurements yet.';
+  $('slideTitle').textContent='A presentation without a remote';$('slideBody').textContent='Face verification enables control. Hand gestures drive the presentation.';
+  $('slideNumber').textContent='1 / 5';$('slide').classList.remove('blackout');$('lastAction').textContent='Ready';notice('Session reset. Press Start to begin again.');
+};
+$('enroll').onclick=async()=>{try{notice((await action('enroll',{name:$('name').value,consent:$('consent').checked})).message);}catch(e){notice(e.message,true);}};
+$('trial').onclick=async()=>{try{notice((await action('trial',{expected:$('expected').value})).message);}catch(e){notice(e.message,true);}};
+$('download').onclick=async()=>{
+  try{
+    await waitForFrame();const data=await request('/results');
+    data.camera=lastCameraSettings ? {label:lastCameraSettings.label,width:lastCameraSettings.width,height:lastCameraSettings.height,frameRate:lastCameraSettings.frameRate} : null;data.last_delivered_fps=deliveredFps;
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),link=document.createElement('a');
+    link.href=URL.createObjectURL(blob);link.download='palm-presenter-session.json';link.click();URL.revokeObjectURL(link.href);
+  }catch(e){notice(e.message,true);}
+};
+window.addEventListener('beforeunload',()=>{running=false;if(stream)stream.getTracks().forEach(t=>t.stop());});
+cameras().catch(e=>notice(e.message,true));
+</script></body></html>
